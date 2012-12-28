@@ -38,13 +38,17 @@ Synopsis
                     port = 5432,
                 }
 
-                local function callback(row)
-                    ngx.say(table.concat(row, ", "))
-                end    
-
                 if ok then
                     local sql = [[select * from test limit 100 offset 0]]
-                    db:query(sql, callback)
+                    db:query(sql, function(i, row, err)
+                        if err then
+                            ngx.header["X-API-Error"] = err["M"] -- readable error message
+                            --ngx.exit(500)            
+                            ngx.say(err["M"])            
+                        else
+                            ngx.say(i..", "..table.concat(row, ", "))    
+                        end
+                    end)
                 end
 
                 db:close()                

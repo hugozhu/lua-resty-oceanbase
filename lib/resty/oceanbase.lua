@@ -168,6 +168,7 @@ function query(self, sql, callback)
     end
 
     local columns, pos, msgType, row, data
+    local i=1
     repeat
         msgType, data, err = _recv_packet(self)
         if not msgType then
@@ -175,17 +176,19 @@ function query(self, sql, callback)
         end
         if msgType == 'T' then
             columns, pos = _parse_row_description(data)
-            callback(columns)
+            callback(i, columns, nil)
+            i = i + 1
         end
 
         if msgType == 'D' then
             row, pos = _parse_row_data(data)
-            callback(row)
+            callback(i, row, nil)
+            i = i + 1
         end
 
         if msgType == 'E' then
             local errors = _parse_error_message(data)
-            callback(nil, errors)
+            callback(i, nil, errors)
             return
         end
     until msgType == 'C'
