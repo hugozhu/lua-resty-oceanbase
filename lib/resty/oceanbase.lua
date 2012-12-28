@@ -108,7 +108,7 @@ local function _recv_packet(self)
         data, err = sock:receive(msgLen - 4)
         msg = data
     end
-    return msgType, msg
+    return msgType, msg, err
 end
 
 function new(self)
@@ -159,12 +159,20 @@ end
 
 function query(self, sql, callback)
     local sock = self.sock
-    local length = sql:len() + 4 + 1
-    sock:send({ "Q", _set_int32(length), sql, "\0"})
+    if not sock then
+        return nil, "not initialized"
+    end    
+    local bytes, err = _send_packet(self, 'Q', sql)
+    if not bytes then
+        return nil, "failed to send query message: " .. err
+    end
+
     local columns, pos, msgType, row, data
     repeat
-        msgType, data = _recv_packet(self)
-
+        msgType, data, err = _recv_packet(self)
+        if not msgType then
+            return nil, "failed to receive the result packet: " .. err
+        end
         if msgType == 'T' then
             columns, pos = _parse_row_description(data)
             callback(columns)
