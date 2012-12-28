@@ -32,42 +32,6 @@ _VERSION = '0.1'
 
 local mt = { __index = _M }
 
-
-local function _get_byte2(data, i)
-    local a, b = strbyte(data, i, i + 1)
-    return bor(a, lshift(b, 8)), i + 2
-end
-
-
-local function _get_byte3(data, i)
-    local a, b, c = strbyte(data, i, i + 2)
-    return bor(a, lshift(b, 8), lshift(c, 16)), i + 3
-end
-
-
-local function _get_byte4(data, i)
-    local a, b, c, d = strbyte(data, i, i + 3)
-    return bor(lshift(a, 24), lshift(b, 16), lshift(c, 8), d), i + 4
-end
-
-
-local function _get_byte8(data, i)
-    local a, b, c, d, e, f, g, h = strbyte(data, i, i + 7)
-    return bor(a, lshift(b, 8), lshift(c, 16), lshift(d, 24), lshift(e, 32),
-               lshift(f, 40), lshift(g, 48), lshift(h, 56)), i + 8
-end
-
-
-
-local function _get_cstring(data, i)
-    local last = strfind(data, "\0", i, true)
-    if not last then
-        return nil, nil
-    end
-
-    return sub(data, i, last - 1), last + 1
-end
-
 local function _get_int16(data,i)
     local a, b = strbyte(data, i, i + 1)
     return bor(lshift(a,8), b), i + 2
@@ -78,17 +42,11 @@ local function _get_int32(data,i)
     return bor(lshift(a,24), lshift(b,16), lshift(c,8), d), i+4
 end
 
-local function _set_byte2(n)
+local function _set_int16(n)
     return strchar(band(rshift(n, 8), 0xff), band(n, 0xff))
 end
 
-local function _set_byte3(n)
-    return strchar(band(rshift(n, 16), 0xff),
-                   band(rshift(n, 8), 0xff), 
-                    band(n, 0xff))
-end
-
-local function _set_byte4(n)
+local function _set_int32(n)
     return strchar(band(rshift(n, 24), 0xff), 
         band(rshift(n, 16), 0xff), 
         band(rshift(n, 8), 0xff),
@@ -96,6 +54,14 @@ local function _set_byte4(n)
         )
 end
 
+local function _get_cstring(data, i)
+    local last = strfind(data, "\0", i, true)
+    if not last then
+        return nil, nil
+    end
+
+    return sub(data, i, last - 1), last + 1
+end
 
 local function _dump(data)
     local bytes = {}
@@ -114,17 +80,16 @@ local function _dumphex(data)
     return concat(bytes, " ")
 end
 
-function _send_packet(self, req, size)
+function _send_packet(self, msgType, msg)
     local sock = self.sock
 
-    self.packet_no = self.packet_no + 1
-
-    --print("packet no: ", self.packet_no)
+    local length = msg:len() + 4 + 1
 
     local packet = {
-        _set_byte3(size),
-        strchar(self.packet_no),
-        req
+        msgType, 
+        _set_int32(length), 
+        msg, 
+        "\0"
     }
 
     --print("sending packet...")
@@ -177,7 +142,7 @@ function connect(self, opts)
     end
     length = length + 1
 
-    sock:send({_set_byte4(length), _set_byte2(3), _set_byte2(0)})
+    sock:send({_set_int32(length), _set_int16(3), _set_int16(0)})
     for k,v in pairs(params) do
         sock:send({k,"\0",v,"\0"})
     end
@@ -195,7 +160,7 @@ end
 function query(self, sql, callback)
     local sock = self.sock
     local length = sql:len() + 4 + 1
-    sock:send({ "Q", _set_byte4(length), sql, "\0"})
+    sock:send({ "Q", _set_int32(length), sql, "\0"})
     local columns, pos, msgType, row, data
     repeat
         msgType, data = _recv_packet(self)
@@ -209,7 +174,6 @@ function query(self, sql, callback)
             row, pos = _parse_row_data(data)
             callback(row)
         end
-
     until msgType == 'C'
 end
 
