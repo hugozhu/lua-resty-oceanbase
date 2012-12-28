@@ -38,7 +38,11 @@ local function _get_int16(data,i)
 end
 
 local function _get_int32(data,i)
-    local a, b, c, d = strbyte(data, i, i + 3)    
+    local a, b, c, d = strbyte(data, i, i + 3)
+    if not a or not b or not c or not d then
+        print(data:len(), "-----", i)
+        return 0, i
+    end
     return bor(lshift(a,24), lshift(b,16), lshift(c,8), d), i+4
 end
 
@@ -186,7 +190,8 @@ function query(self, sql, callback)
 
         if msgType == 'E' then
             local errors = _parse_error_message(data)
-            return errors
+            callback(nil, errors)
+            return
         end
     until msgType == 'C'
 end
@@ -208,14 +213,14 @@ function _parse_row_data(data)
     local num_of_field, pos = _get_int16(data, 1)
     local columns = {}
     local msgLen
-    for i=1, num_of_field-1 do
-        if data:len() > pos + 32 then
-            msgLen, pos = _get_int32(data, pos)
-            local bytes = sub(data, pos, pos + msgLen - 1)
-            insert(columns, bytes)
-            pos = pos + msgLen
+    for i=1, num_of_field do
+        msgLen, pos = _get_int32(data, pos)
+        if msgLen < 1 then
+            insert(columns, nil)
         else
-            print(i, "   ", pos)
+            local bytes = sub(data, pos, pos + msgLen - 1)
+            insert(columns, bytes)            
+            pos = pos + msgLen
         end
     end
     return columns, pos
