@@ -86,18 +86,13 @@ end
 
 function _send_packet(self, msgType, msg)
     local sock = self.sock
-
     local length = msg:len() + 4 + 1
-
     local packet = {
         msgType, 
         _set_int32(length), 
         msg, 
         "\0"
     }
-
-    --print("sending packet...")
-
     return sock:send(packet)
 end
 
@@ -152,13 +147,13 @@ function connect(self, opts)
     end
     sock:send({"\0"})
 
-    local typ, msg = _recv_packet(self)
+    local msgType, msg = _recv_packet(self)
 
     repeat
-        local msgType, _ = _recv_packet(self)
-    until msgType == 'Z'  -- ready for query now
+        local t, _ = _recv_packet(self)
+    until t == 'Z'  -- loop until we are ready for query
 
-    return typ == "R" and _get_int32(msg,1) == 0 
+    return msgType == "R" and _get_int32(msg,1) == 0 
 end
 
 function query(self, sql, callback)
@@ -166,7 +161,7 @@ function query(self, sql, callback)
     if not sock then
         return nil, "not initialized"
     end
-    print("hello")    
+        
     local bytes, err = _send_packet(self, 'Q', sql)
     if not bytes then
         return nil, "failed to send query message: " .. err
@@ -199,13 +194,14 @@ end
 function _parse_error_message(data)
     local errors = {}
     local i = 1
-    local last = strfind(data, "\0", i, true)
     repeat
-        local msg = _get_cstring(data,i)
-        insert(errors, msg)        
-        i = i + msg:len()
-        last = strfind(data, "\0", i, true)           
-    until msg:len()==0 or not last
+        local last = strfind(data, "\0", i, true)
+        if last then
+            local msg = sub(data, i, last - 1)
+            errors[sub(msg,1,1)] = sub(msg,2,msg:len())
+            i = last + 1
+        end
+    until not last
     return errors
 end
 
