@@ -161,7 +161,8 @@ function query(self, sql, callback)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
-    end    
+    end
+    print("hello")    
     local bytes, err = _send_packet(self, 'Q', sql)
     if not bytes then
         return nil, "failed to send query message: " .. err
@@ -182,18 +183,40 @@ function query(self, sql, callback)
             row, pos = _parse_row_data(data)
             callback(row)
         end
+
+        if msgType == 'E' then
+            local errors = _parse_error_message(data)
+            return errors
+        end
     until msgType == 'C'
+end
+
+function _parse_error_message(data)
+    local errors = {}
+    local i = 1
+    local last = strfind(data, "\0", i, true)
+    repeat
+        local msg = _get_cstring(data,i)
+        insert(errors, msg)        
+        i = i + msg:len()
+        last = strfind(data, "\0", i, true)           
+    until msg:len()==0 or not last
+    return errors
 end
 
 function _parse_row_data(data)
     local num_of_field, pos = _get_int16(data, 1)
     local columns = {}
     local msgLen
-    for i=1, num_of_field do
-        msgLen, pos = _get_int32(data, pos)
-        local bytes = sub(data, pos, pos + msgLen - 1)
-        insert(columns, bytes)
-        pos = pos + msgLen
+    for i=1, num_of_field-1 do
+        if data:len() > pos + 32 then
+            msgLen, pos = _get_int32(data, pos)
+            local bytes = sub(data, pos, pos + msgLen - 1)
+            insert(columns, bytes)
+            pos = pos + msgLen
+        else
+            print(i, "   ", pos)
+        end
     end
     return columns, pos
 end
