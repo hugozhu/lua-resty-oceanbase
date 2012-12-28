@@ -76,14 +76,14 @@ TODO
 Author
 ======
 
-hugozhu <hugozhu@gmail.com>
+Hugo Zhu <hugozhu@gmail.com>
 
 Copyright and License
 =====================
 
 This module is licensed under the BSD license.
 
-Copyright (C) 2012, by Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>.
+Copyright (C) 2012, by Hugo Zhu <hugozhu@gmail.com>.
 
 All rights reserved.
 
