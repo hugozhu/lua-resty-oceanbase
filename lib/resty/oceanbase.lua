@@ -26,9 +26,11 @@ local pairs = pairs
 
 module(...)
 
-_VERSION = '0.1'
+_VERSION = '0.2'
 
 -- constants
+local STATE_CONNECTED = 1
+local STATE_COMMAND_SENT = 2
 
 local mt = { __index = _M }
 
@@ -63,8 +65,11 @@ local function _get_cstring(data, i)
     if not last then
         return nil, nil
     end
-
     return sub(data, i, last - 1), last + 1
+end
+
+local function _to_cstring(data)
+    return {data, "\0"}
 end
 
 local function _dump(data)
@@ -118,8 +123,17 @@ function new(self)
     return setmetatable({ sock = sock }, mt)
 end
 
+function set_timeout(self, timeout)
+    local sock = self.sock
+    if not sock then
+        return nil, "not initialized"
+    end
+
+    return sock:settimeout(timeout)
+end
+
 function connect(self, opts)
-    local ok, err, data, length
+    local ok, err
     local host = opts.host
     local port = opts.port or 5432
 
@@ -128,14 +142,25 @@ function connect(self, opts)
         return nil, "not initialized"
     end
 
+    local pool = opts.pool
+    if not pool then
+        pool = concat({host, port}, ":")
+    end 
     ok, err = sock:connect(host, port)
+
     if not ok then
         return nil, 'failed to connect: ' .. err
     end
 
-    local params = {} -- oceanbase doesn't support authentication for now
+    local reused = sock:getreusedtimes()
 
-    length = 4 + 4
+    if reused and reused > 0 then
+        self.state = STATE_CONNECTED
+        return 1
+    end
+
+    local params = {} -- oceanbase doesn't support authentication for now
+    local length = 4 + 4
     for k,v in pairs(params) do
         length = length + k:len() + 1 + v:len() + 1
     end
@@ -152,6 +177,8 @@ function connect(self, opts)
     repeat
         local t, _ = _recv_packet(self)
     until t == 'Z'  -- loop until we are ready for query
+
+    self.state = STATE_CONNECTED
 
     return msgType == "R" and _get_int32(msg,1) == 0 
 end
@@ -188,7 +215,7 @@ function query(self, sql, callback)
 
         if msgType == 'E' then
             local errors = _parse_error_message(data)
-            callback(i, nil, errors)
+            callback(i, nil, errors)            
             return
         end
     until msgType == 'C'
@@ -235,6 +262,31 @@ function _parse_row_description(data)
         insert(columns, column)        
     end
     return columns, pos
+end
+
+
+function set_keepalive(self, ...)
+    local sock = self.sock
+    if not sock then
+        return nil, "not initialized"
+    end
+
+    if self.state ~= STATE_CONNECTED then
+        return nil, "cannot be reused in the current connection state: "
+                    .. (self.state or "nil")
+    end
+
+    self.state = nil
+    return sock:setkeepalive(...)
+end
+
+function get_reused_times(self)
+    local sock = self.sock
+    if not sock then
+        return nil, "not initialized"
+    end
+
+    return sock:getreusedtimes()
 end
 
 function close(self)
